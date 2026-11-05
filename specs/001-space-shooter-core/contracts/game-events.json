@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GameEventSchemas",
+  "description": "Event bus contract schemas for decoupled communication between game systems",
+  "definitions": {
+    "PLAYER_INPUT": {
+      "type": "object",
+      "required": ["dx", "dy", "isFiring"],
+      "properties": {
+        "dx": { "type": "number", "minimum": -1, "maximum": 1 },
+        "dy": { "type": "number", "minimum": -1, "maximum": 1 },
+        "isFiring": { "type": "boolean" }
+      }
+    },
+    "ENTITY_DAMAGED": {
+      "type": "object",
+      "required": ["targetId", "damageAmount", "remainingHealth", "sourceId"],
+      "properties": {
+        "targetId": { "type": "integer" },
+        "damageAmount": { "type": "number" },
+        "remainingHealth": { "type": "number" },
+        "sourceId": { "type": "integer" }
+      }
+    },
+    "ENEMY_DESTROYED": {
+      "type": "object",
+      "required": ["enemyId", "archetype", "x", "y", "pointsAwarded", "droppedPowerUp"],
+      "properties": {
+        "enemyId": { "type": "integer" },
+        "archetype": { "type": "string", "enum": ["SCOUT", "FIGHTER", "COMMANDER"] },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "pointsAwarded": { "type": "integer" },
+        "droppedPowerUp": { "type": ["string", "null"], "enum": ["WEAPON_UPGRADE", "SCORE_BONUS", null] }
+      }
+    },
+    "PLAYER_LIFE_LOST": {
+      "type": "object",
+      "required": ["livesRemaining", "isGameOver"],
+      "properties": {
+        "livesRemaining": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "isGameOver": { "type": "boolean" }
+      }
+    },
+    "WEAPON_UPGRADED": {
+      "type": "object",
+      "required": ["newTier", "isMaxTierBonus"],
+      "properties": {
+        "newTier": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "isMaxTierBonus": { "type": "boolean" }
+      }
+    },
+    "WAVE_COMPLETED": {
+      "type": "object",
+      "required": ["completedWaveIndex", "bonusPoints", "nextWaveIndex"],
+      "properties": {
+        "completedWaveIndex": { "type": "integer", "minimum": 1 },
+        "bonusPoints": { "type": "integer" },
+        "nextWaveIndex": { "type": "integer", "minimum": 2 }
+      }
+    },
+    "VFX_SPAWN_TRIGGERED": {
+      "type": "object",
+      "required": ["type", "x", "y", "particleCount", "color"],
+      "properties": {
+        "type": { "type": "string", "enum": ["EXPLOSION", "HIT_SPARK", "PICKUP_BURST", "GRAZE_SPARK"] },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "particleCount": { "type": "integer", "minimum": 1, "maximum": 40 },
+        "color": { "type": "string" }
+      }
+    }
+  }
+}
+

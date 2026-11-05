@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: Modern Galaga Company Leaderboard API
+  description: Internal company API for authenticating sessions, submitting high scores, and retrieving rankings.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+    description: Internal intranet gateway
+
+paths:
+  /session/start:
+    post:
+      summary: Initialize a validated game session
+      description: Issues a cryptographically signed session token and timestamp for anti-cheat verification.
+      responses:
+        '200':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+
+  /leaderboard:
+    get:
+      summary: Retrieve leaderboard rankings
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all_time, weekly, monthly]
+            default: all_time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+      responses:
+        '200':
+          description: List of top ranking entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period:
+                    type: string
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+
+    post:
+      summary: Submit a completed game score
+      description: Submits player score along with session token for integrity verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreSubmissionRequest'
+      responses:
+        '201':
+          description: Score successfully validated and recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreSubmissionResponse'
+        '400':
+          description: Invalid submission or anti-cheat check failed (e.g. impossible score rate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    SessionResponse:
+      type: object
+      required:
+        - sessionId
+        - sessionToken
+        - timestamp
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        sessionToken:
+          type: string
+          description: JWT or HMAC token embedding start time and session id
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds
+
+    LeaderboardEntry:
+      type: object
+      required:
+        - rank
+        - playerName
+        - score
+        - highestWave
+        - achievedAt
+      properties:
+        rank:
+          type: integer
+          example: 1
+        playerName:
+          type: string
+          example: "Nguyen Van A (Tech Lead)"
+        department:
+          type: string
+          example: "Engineering"
+        score:
+          type: integer
+          example: 145200
+        highestWave:
+          type: integer
+          example: 14
+        achievedAt:
+          type: string
+          format: date-time
+
+    ScoreSubmissionRequest:
+      type: object
+      required:
+        - sessionToken
+        - playerName
+        - score
+        - highestWave
+        - durationSeconds
+        - enemiesDefeated
+      properties:
+        sessionToken:
+          type: string
+        playerName:
+          type: string
+          minLength: 1
+          maxLength: 50
+        department:
+          type: string
+          maxLength: 50
+        score:
+          type: integer
+          minimum: 0
+        highestWave:
+          type: integer
+          minimum: 1
+        durationSeconds:
+          type: number
+          description: Total active play time in seconds
+        enemiesDefeated:
+          type: integer
+          minimum: 0
+
+    ScoreSubmissionResponse:
+      type: object
+      required:
+        - rank
+        - isPersonalBest
+        - isNewHighScore
+      properties:
+        rank:
+          type: integer
+        isPersonalBest:
+          type: boolean
+        isNewHighScore:
+          type: boolean
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+

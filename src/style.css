@@ -1,0 +1,119 @@
+:root {
+  --bg-deep: #05060f;
+  --bg-panel: #0c1024;
+  --neon-cyan: #00f0ff;
+  --neon-magenta: #ff1e8a;
+  --neon-gold: #ffcc00;
+  --neon-green: #00ff88;
+  --text-light: #e4f0ff;
+  --text-dim: #7c8db5;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, #0e132d 0%, var(--bg-deep) 80%);
+  color: var(--text-light);
+  font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+#arcade-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 100vw;
+  height: 100vh;
+  padding: 10px;
+}
+
+.arcade-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 640px;
+  padding: 8px 14px;
+  background: rgba(12, 16, 36, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 8px;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.1);
+}
+
+.brand-badge {
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+  font-size: 1rem;
+}
+
+.version-tag {
+  font-size: 0.7rem;
+  color: var(--neon-magenta);
+  margin-left: 6px;
+}
+
+.header-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.arcade-btn {
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--text-light);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.arcade-btn:hover {
+  background: rgba(0, 240, 255, 0.25);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+}
+
+#canvas-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  max-width: 640px;
+  margin: 8px 0;
+}
+
+#game-canvas {
+  display: block;
+  background: #04050c;
+  border: 2px solid rgba(0, 240, 255, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(0, 0, 0, 0.9);
+}
+
+.arcade-footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  padding: 4px 12px;
+}
+
+.arcade-footer strong {
+  color: var(--neon-cyan);
+}
+

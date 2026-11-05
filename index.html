@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>STAR VANGUARD // Internal Arcade Championship</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="arcade-shell">
+    <header class="arcade-header">
+      <div class="brand-badge">STAR VANGUARD <span class="version-tag">v1.0</span></div>
+      <div class="header-controls">
+        <button id="btn-settings" class="arcade-btn" title="Settings & Accessibility">⚙ CÀI ĐẶT</button>
+        <button id="btn-leaderboard" class="arcade-btn" title="Company Leaderboard">🏆 BẢNG XẾP HẠNG</button>
+      </div>
+    </header>
+
+    <main id="canvas-container">
+      <canvas id="game-canvas"></canvas>
+    </main>
+
+    <footer class="arcade-footer">
+      <span><strong>ĐIỀU KHIỂN:</strong> WASD / Phím Mũi Tên (8 hướng)</span>
+      <span>•</span>
+      <span><strong>BẮN:</strong> SPACE / J (Giữ liên thanh)</span>
+      <span>•</span>
+      <span><strong>TẠM DỪNG:</strong> P / ESC</span>
+    </footer>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+

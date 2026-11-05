@@ -1,0 +1,21 @@
+{
+  "name": "star-vanguard-arcade",
+  "version": "1.0.0",
+  "private": true,
+  "description": "High-tempo modern space shoot-'em-up for internal company competition",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8"
+  }
+}
+
