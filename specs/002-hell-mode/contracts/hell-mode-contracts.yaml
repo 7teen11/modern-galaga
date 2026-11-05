@@ -1,0 +1,133 @@
+openapi: 3.0.3
+info:
+  title: Star Vanguard - Hell Mode & Internationalization API Contracts
+  version: 1.1.0
+  description: Specification for Hell Mode campaign state, bilingual dictionary, and segregated Hell Leaderboard.
+
+paths:
+  /api/v1/leaderboard/hell:
+    get:
+      summary: Retrieve Top Hell Mode pilots and speedrun clears
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: List of verified Hell Mode rankings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HellLeaderboardEntry'
+    post:
+      summary: Submit a completed Hell Mode run or Boss victory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HellScoreSubmissionRequest'
+      responses:
+        '200':
+          description: Score accepted and ranked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HellScoreSubmissionResponse'
+        '403':
+          description: Anti-cheat validation rejected submission
+
+components:
+  schemas:
+    HellLeaderboardEntry:
+      type: object
+      required:
+        - rank
+        - playerName
+        - department
+        - score
+        - isVictory
+        - clearTimeMs
+        - achievedAt
+      properties:
+        rank:
+          type: integer
+          example: 1
+        playerName:
+          type: string
+          example: "Minh-Ace"
+        department:
+          type: string
+          example: "Platform Core"
+        score:
+          type: integer
+          example: 84500
+        isVictory:
+          type: boolean
+          example: true
+        clearTimeMs:
+          type: integer
+          example: 142000
+        achievedAt:
+          type: string
+          format: date-time
+          example: "2026-11-04T16:45:00Z"
+
+    HellScoreSubmissionRequest:
+      type: object
+      required:
+        - sessionToken
+        - playerName
+        - department
+        - score
+        - isVictory
+        - durationSeconds
+        - livesRemaining
+      properties:
+        sessionToken:
+          type: string
+          example: "tok_hell_1730767200"
+        playerName:
+          type: string
+          maxLength: 30
+        department:
+          type: string
+          maxLength: 30
+        score:
+          type: integer
+          minimum: 0
+        isVictory:
+          type: boolean
+        durationSeconds:
+          type: number
+          minimum: 1.0
+        livesRemaining:
+          type: integer
+          minimum: 0
+          maximum: 3
+
+    HellScoreSubmissionResponse:
+      type: object
+      required:
+        - rank
+        - isPersonalBest
+        - message
+      properties:
+        rank:
+          type: integer
+        isPersonalBest:
+          type: boolean
+        message:
+          type: string
+
+    LocalizationDictionary:
+      type: object
+      description: Key-value map of UI strings for a single locale (vi or en)
+      additionalProperties:
+        type: string
+

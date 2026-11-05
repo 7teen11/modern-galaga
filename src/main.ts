@@ -21,9 +21,22 @@ import { HUD } from './ui/HUD';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { SettingsModal } from './ui/SettingsModal';
 
+// Feature 002: Modular Hell Mode & Localization Imports
+import { i18n } from './i18n';
+import { HellDirector } from './modes/hell/HellDirector';
+import { HellDamageSystem } from './modes/hell/HellDamageSystem';
+import { HellWaveSystem } from './modes/hell/HellWaveSystem';
+import { HellBossPool } from './modes/hell/HellBossPool';
+import { HellBossSystem } from './modes/hell/HellBossSystem';
+import { HellLeaderboardClient } from './modes/hell/HellLeaderboardClient';
+import { ModeSelectorUI } from './modes/hell/ui/ModeSelectorUI';
+import { HellHUDTheme } from './modes/hell/ui/HellHUDTheme';
+import { HellVictoryScreen } from './modes/hell/ui/HellVictoryScreen';
+import { HellLeaderboardModal } from './modes/hell/ui/HellLeaderboardModal';
+
 /**
- * STAR VANGUARD - Application Entry Point & Full Game Lifecycle Orchestration (T043).
- * Wires all ECS systems, object pools, audio synthesizer, leaderboard client, and UI overlays.
+ * STAR VANGUARD - Application Entry Point & Modular Game Lifecycle Orchestration.
+ * Integrates Standard Campaign and modular Hell Mode (Danmaku Climax Boss & Bilingual UI).
  */
 export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
   const canvas =
@@ -40,6 +53,7 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
   // 1. Persistence, Leaderboard & Audio Services
   const storage = new StorageService();
   const leaderboardClient = new LeaderboardClient(storage);
+  const hellLeaderboardClient = new HellLeaderboardClient();
   const scoreManager = new ScoreManager(eventBus, storage);
   const initialSettings = storage.loadSettings();
   const soundSynth = new SoundSynthesizer(eventBus, initialSettings.masterVolume);
@@ -69,7 +83,100 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
   const enemySystem = new EnemySystem(entities, weaponSystem, playerId);
   const waveSpawnSystem = new WaveSpawnSystem(enemyPool, enemySystem, eventBus);
 
-  // 4. Visual Renderer, VFX Particle Pool & Overlays
+  // 4. Feature 002: Modular Hell Mode Subsystems
+  const hellDirector = new HellDirector(eventBus);
+  const hellDamageSystem = new HellDamageSystem(
+    entities,
+    eventBus,
+    hellDirector,
+    weaponSystem,
+    playerId
+  );
+  const hellWaveSystem = new HellWaveSystem(
+    enemyPool,
+    enemySystem,
+    eventBus,
+    hellDirector
+  );
+  const hellBossPool = new HellBossPool(entities, 160);
+  const hellBossSystem = new HellBossSystem(
+    entities,
+    eventBus,
+    hellDirector,
+    hellBossPool,
+    enemyPool,
+    playerId
+  );
+  const hellHUDTheme = new HellHUDTheme(hellDirector, () => game.getState(), i18n);
+  const hellVictoryScreen = new HellVictoryScreen(i18n, () => {
+    game.setState(GameModeState.TITLE);
+  });
+  const hellLeaderboardModal = new HellLeaderboardModal(
+    canvas,
+    leaderboardClient,
+    hellLeaderboardClient,
+    i18n
+  );
+
+  let isSettingsOpen = false;
+  const modeSelectorUI = new ModeSelectorUI(
+    canvas,
+    hellDirector,
+    () => game.getState(),
+    i18n,
+    {
+      getStandardTopScores: () => leaderboardClient.getTopScores(5),
+      getHellTopScores: () => hellLeaderboardClient.getTopScores(5),
+      isModalOpen: () =>
+        isSettingsOpen ||
+        hellLeaderboardModal.isOpen() ||
+        hellVictoryScreen.isOpen(),
+    }
+  );
+
+  // Connect Hell Boss Trigger & Victory handlers
+  hellWaveSystem.onBossTriggered = () => {
+    hellBossSystem.spawnBoss();
+  };
+
+  hellBossSystem.onBossDefeated = () => {
+    scoreManager.addPoints(10000); // 10,000 pts boss clear bonus
+    hellDirector.stopRun();
+    const finalScore = scoreManager.getState().currentScore;
+    const clearTimeMs = hellDirector.getClearTimeMs();
+    const clearTimeFormatted = hellDirector.getFormattedClearTime();
+
+    // Auto submit to Hell Rankings
+    try {
+      const session = hellLeaderboardClient.startSession();
+      const settings = storage.loadSettings();
+      hellLeaderboardClient.submitScore({
+        sessionToken: session.sessionToken,
+        playerName: settings.playerName,
+        department: settings.department,
+        score: finalScore,
+        isVictory: true,
+        durationSeconds: Math.max(1, clearTimeMs / 1000),
+        clearTimeMs,
+        livesRemaining: entities.healths.get(playerId)?.livesRemaining ?? 1,
+      });
+    } catch {
+      // Ignore submission errors
+    }
+
+    hellVictoryScreen.show({
+      clearTimeFormatted,
+      score: finalScore,
+    });
+  };
+
+  // Register Hell subsystems into Director
+  hellDirector.registerSubSystem(hellDamageSystem);
+  hellDirector.registerSubSystem(hellWaveSystem);
+  hellDirector.registerSubSystem(hellBossSystem);
+  hellDirector.registerSubSystem(hellHUDTheme);
+
+  // 5. Visual Renderer, VFX Particle Pool & Overlays
   const renderSystem = new RenderSystem(entities, playerId);
   const vfxSystem = new VFXSystem(eventBus, renderSystem, playerId);
   vfxSystem.setAccessibilityPreferences(
@@ -97,6 +204,7 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
     () => {
       // Transition to GAME_OVER when all 3 lives are exhausted (FR-012)
       game.setState(GameModeState.GAME_OVER);
+      hellDirector.stopRun();
       const scoreState = scoreManager.getState();
       gameOverScreen.isNewRecordOnLastRun =
         scoreState.currentScore > 0 &&
@@ -109,23 +217,44 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
         (Date.now() - runStartTimeMs) / 1000
       );
 
-      if (activeSessionToken && scoreState.currentScore > 0) {
-        try {
-          const result = leaderboardClient.submitScore({
-            sessionToken: activeSessionToken,
-            playerName: settings.playerName,
-            department: settings.department,
-            score: scoreState.currentScore,
-            highestWave: scoreState.currentWave,
-            durationSeconds,
-            enemiesDefeated: scoreState.enemiesDefeatedCount
-          });
-          gameOverScreen.lastSubmittedRank = result.rank;
-        } catch {
-          gameOverScreen.lastSubmittedRank = null;
+      if (hellDirector.isHellMode()) {
+        if (scoreState.currentScore > 0) {
+          try {
+            const session = hellLeaderboardClient.startSession();
+            const result = hellLeaderboardClient.submitScore({
+              sessionToken: session.sessionToken,
+              playerName: settings.playerName,
+              department: settings.department,
+              score: scoreState.currentScore,
+              isVictory: false,
+              durationSeconds,
+              clearTimeMs: hellDirector.getClearTimeMs(),
+              livesRemaining: 0,
+            });
+            gameOverScreen.lastSubmittedRank = result.rank;
+          } catch {
+            gameOverScreen.lastSubmittedRank = null;
+          }
         }
       } else {
-        gameOverScreen.lastSubmittedRank = null;
+        if (activeSessionToken && scoreState.currentScore > 0) {
+          try {
+            const result = leaderboardClient.submitScore({
+              sessionToken: activeSessionToken,
+              playerName: settings.playerName,
+              department: settings.department,
+              score: scoreState.currentScore,
+              highestWave: scoreState.currentWave,
+              durationSeconds,
+              enemiesDefeated: scoreState.enemiesDefeatedCount
+            });
+            gameOverScreen.lastSubmittedRank = result.rank;
+          } catch {
+            gameOverScreen.lastSubmittedRank = null;
+          }
+        } else {
+          gameOverScreen.lastSubmittedRank = null;
+        }
       }
     }
   );
@@ -153,8 +282,18 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
   const hud = new HUD(entities, playerId, {
     getCurrentScore: () => scoreManager.getState().currentScore,
     getHighScore: () => scoreManager.getState().sessionHighScore,
-    getCurrentWave: () => waveSpawnSystem.currentWaveIndex || 1,
-    getWaveBannerTimer: () => waveSpawnSystem.waveBannerTimer,
+    getCurrentWave: () => {
+      if (hellDirector.isHellMode()) {
+        return hellWaveSystem.isBossPhase ? 3 : hellWaveSystem.currentWaveIndex || 1;
+      }
+      return waveSpawnSystem.currentWaveIndex || 1;
+    },
+    getWaveBannerTimer: () => {
+      if (hellDirector.isHellMode()) {
+        return hellWaveSystem.waveBannerTimer;
+      }
+      return waveSpawnSystem.waveBannerTimer;
+    },
     getGameState: () => game.getState(),
     getDebugStats: () => {
       const bulletMetrics = weaponSystem.getPoolMetrics();
@@ -167,21 +306,27 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
           { name: 'EnemyBlt', metrics: bulletMetrics.enemyBullets },
           { name: 'Enemy', metrics: enemyPool.getMetrics() },
           { name: 'Particle', metrics: vfxSystem.getMetrics() },
-          { name: 'PowerUp', metrics: powerUpPool.getMetrics() }
+          { name: 'PowerUp', metrics: powerUpPool.getMetrics() },
+          { name: 'BossBlt', metrics: hellBossPool.getMetrics() }
         ]
       };
     }
   });
 
-  // 5. Register Systems in Deterministic Execution Order
-  // RenderSystem runs first in render pass, followed by VFXSystem, HUD, and GameOverScreen
+  // 6. Register Systems in Deterministic Execution Order
   game.addSystem({
     update(dt: number) {
       if (game.getState() === GameModeState.PLAYING) {
         inputSystem.update(dt);
         movementSystem.update(dt);
         weaponSystem.update(dt);
-        waveSpawnSystem.update(dt);
+
+        if (hellDirector.isHellMode()) {
+          hellDirector.update(dt);
+        } else {
+          waveSpawnSystem.update(dt);
+        }
+
         enemySystem.update(dt);
         dropSystem.update(dt);
         healthSystem.update(dt);
@@ -191,24 +336,39 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
       vfxSystem.update(dt);
       hud.update(dt);
       gameOverScreen.update(dt);
+      modeSelectorUI.update(dt);
+      hellVictoryScreen.update(dt);
+      hellLeaderboardModal.update(dt);
     },
     render(ctx: CanvasRenderingContext2D) {
       renderSystem.render(ctx);
       vfxSystem.render(ctx);
       hud.render(ctx);
       gameOverScreen.render(ctx);
+
+      // Render Hell Mode Overlays
+      if (hellDirector.isHellMode()) {
+        hellDirector.render(ctx);
+      }
+
+      modeSelectorUI.render(ctx);
+      hellVictoryScreen.render(ctx);
+      hellLeaderboardModal.render(ctx);
     }
   });
 
-  // 6. Start / Restart Run Lifecycle Handler
+  // 7. Start / Restart Run Lifecycle Handler
   const startNewRun = (): void => {
     inputSystem.clearInputs();
 
     // Reset pools & entities
     weaponSystem.releaseAllBullets();
     powerUpPool.releaseAll();
+    hellBossPool.releaseAll();
     waveSpawnSystem.reset();
+    hellWaveSystem.reset();
     vfxSystem.particlePool.releaseAll();
+    hellVictoryScreen.hide();
 
     // Restore Player Ship state (100 HP, 3 Lives, Tier 1 Weapon, Bottom-Center)
     entities.setEntityActive(playerId, true);
@@ -232,18 +392,26 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
     previousHighScore = storage.loadRecord().highScore;
     scoreManager.resetRun();
 
-    const session = leaderboardClient.startSession();
-    activeSessionToken = session.sessionToken;
     runStartTimeMs = Date.now();
     gameOverScreen.isNewRecordOnLastRun = false;
     gameOverScreen.lastSubmittedRank = null;
 
-    waveSpawnSystem.startWave(1);
+    if (hellDirector.isHellMode()) {
+      hellDirector.startRun();
+      hellWaveSystem.startCampaign();
+    } else {
+      hellDirector.stopRun();
+      const session = leaderboardClient.startSession();
+      activeSessionToken = session.sessionToken;
+      waveSpawnSystem.startWave(1);
+    }
+
     game.setState(GameModeState.PLAYING);
   };
 
-  // 7. Settings Modal & UI Button Wiring
+  // 8. Settings Modal & UI Button Wiring
   const settingsModal = new SettingsModal(storage, (updated) => {
+    isSettingsOpen = false;
     soundSynth.setVolume(updated.masterVolume);
     vfxSystem.setAccessibilityPreferences(
       updated.screenShakeIntensity,
@@ -254,9 +422,12 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
 
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (settingsModal.isOpen()) return;
+      isSettingsOpen = settingsModal.isOpen();
+      if (isSettingsOpen || hellLeaderboardModal.isOpen() || hellVictoryScreen.isOpen()) {
+        return;
+      }
 
-      // Toggle runtime pool & FPS debug overlay with F3 or Backquote (`) (T046, Principle IV)
+      // Toggle runtime pool & FPS debug overlay with F3 or Backquote (`)
       if (e.code === 'F3' || e.code === 'Backquote') {
         e.preventDefault();
         game.debugOverlayEnabled = !game.debugOverlayEnabled;
@@ -282,20 +453,22 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
 
     const btnSettings = document.getElementById('btn-settings');
     btnSettings?.addEventListener('click', () => {
+      hellLeaderboardModal.close();
       if (game.getState() === GameModeState.PLAYING) {
         game.setState(GameModeState.PAUSED);
       }
       settingsModal.open();
+      isSettingsOpen = true;
     });
 
     const btnLeaderboard = document.getElementById('btn-leaderboard');
     btnLeaderboard?.addEventListener('click', () => {
-      const state = game.getState();
-      if (state === GameModeState.PLAYING) {
+      settingsModal.close();
+      isSettingsOpen = false;
+      if (game.getState() === GameModeState.PLAYING) {
         game.setState(GameModeState.PAUSED);
-      } else if (state === GameModeState.PAUSED) {
-        game.setState(GameModeState.PLAYING);
       }
+      hellLeaderboardModal.open(hellDirector.isHellMode() ? 'HELL' : 'STANDARD');
     });
   }
 
