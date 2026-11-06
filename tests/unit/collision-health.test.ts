@@ -112,10 +112,10 @@ describe('User Story 3: Multi-Life Stock with Health Bar, Grazing Hitbox & Damag
     const playerHealth = entities.healths.get(playerId)!;
     const playerWeapon = entities.weapons.get(playerId)!;
 
-    // Move ship away from center and upgrade weapon to Tier 3
+    // Move ship away from center and upgrade weapon to Tier 2 (degrades by 1 -> Tier 1 on life loss)
     playerTransform.x = 120;
     playerTransform.y = 450;
-    playerWeapon.tier = 3;
+    playerWeapon.tier = 2;
 
     // Inflict lethal 100 damage on Life 1 (3 -> 2 lives remaining)
     healthSystem.applyDamage(playerId, 100);

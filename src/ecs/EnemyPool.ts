@@ -7,6 +7,7 @@ import {
 import { ObjectPool, Poolable, PoolMetrics } from './Pool';
 import { EnemyArchetype } from '../core/EventBus';
 import { ENEMY_ARCHETYPE_CONFIG } from '../components/EnemyBehavior';
+import { selectEnemyColorVariant } from '../components/EnemyVariants';
 import { CubicBezierSegment } from '../utils/Spline';
 
 export class PooledEnemy implements Poolable {
@@ -155,12 +156,22 @@ export class EnemyPool {
     t.speed = stats.baseDiveSpeed * mult;
     t.rotation = 0;
 
+    const variant = selectEnemyColorVariant(
+      params.archetype,
+      params.gridCol,
+      params.gridRow
+    );
+
     const r = this.entities.renders.get(id)!;
     r.spriteKey = `ENEMY_${params.archetype}`;
     r.width = stats.width;
     r.height = stats.height;
     r.hitFlashTimer = 0;
-    r.bloomColor = stats.bloomColor;
+    r.bloomColor = variant.hullPrimary;
+    r.variantId = variant.variantId;
+    r.hullPrimary = variant.hullPrimary;
+    r.hullSecondary = variant.hullSecondary;
+    r.thrusterColor = variant.thrusterColor;
 
     const hb = this.entities.hitboxes.get(id)!;
     hb.halfWidth = stats.width * 0.5;

@@ -2,15 +2,16 @@ import { EntityManager } from '../ecs/Entity';
 import { EntityId } from '../ecs/Component';
 import { EventBus } from '../core/EventBus';
 import { PowerUpPool, SURPLUS_UPGRADE_BONUS_POINTS } from '../components/PowerUp';
+import { OVERCHARGE_RADIAL_CLEAR_RADIUS_PX } from '../components/WeaponTierConfig';
 import { WeaponSystem } from './WeaponSystem';
 import { CollisionSystem } from './CollisionSystem';
 import { Game, GameSystem } from '../core/Game';
 
 /**
- * Power-Up Drop Spawning, Drifting Lifecycle & Pickup Resolution System (FR-007, FR-008, FR-011).
- * Automatically drops weapon upgrade tokens when elite Commanders are destroyed,
- * upgrades player blaster tiers (Tier 1 -> Tier 2 -> Tier 3), and awards 1,000 bonus points
- * when picking up surplus upgrades at Tier 3.
+ * Power-Up Drop Spawning, Drifting Lifecycle & Pickup Resolution System (FR-001, FR-004, FR-008).
+ * Automatically drops weapon upgrade tokens when Commanders (100%) or Fighters (20%) are destroyed,
+ * upgrades player blaster tiers (Tier 1 -> Tier 2 -> Tier 3 -> Tier 4 -> Tier 5), and awards
+ * +2,000 Overcharge bonus points + 80px radial bullet clear when picking up surplus tokens at Tier 5.
  */
 export class DropSystem implements GameSystem {
   private readonly entities: EntityManager;
@@ -93,8 +94,23 @@ export class DropSystem implements GameSystem {
 
     if (powerUp.type === 'WEAPON_UPGRADE') {
       const result = this.weaponSystem.upgradePlayerWeapon();
-      if (result.isMaxTierBonus && this.onBonusScoreAwarded) {
-        this.onBonusScoreAwarded(SURPLUS_UPGRADE_BONUS_POINTS);
+      if (result.isMaxTierBonus) {
+        // Max-Tier Overcharge: clear enemy projectiles within 80px radius and award +2,000 bonus points (FR-004)
+        this.weaponSystem.clearEnemyBulletsInRadius(
+          x,
+          y,
+          OVERCHARGE_RADIAL_CLEAR_RADIUS_PX
+        );
+        this.eventBus.emit('VFX_SPAWN_TRIGGERED', {
+          type: 'PICKUP_BURST',
+          x,
+          y,
+          particleCount: 28,
+          color: '#ff2a55'
+        });
+        if (this.onBonusScoreAwarded) {
+          this.onBonusScoreAwarded(SURPLUS_UPGRADE_BONUS_POINTS);
+        }
       }
     } else if (powerUp.type === 'SCORE_BONUS' && this.onBonusScoreAwarded) {
       this.onBonusScoreAwarded(SURPLUS_UPGRADE_BONUS_POINTS);

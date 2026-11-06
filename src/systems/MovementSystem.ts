@@ -9,6 +9,9 @@ import { Spline } from '../utils/Spline';
  * Integrates velocity vectors using fixed delta-time and evaluates Bézier spline paths.
  */
 export class MovementSystem implements GameSystem {
+  public static readonly MAX_BANK_TILT_RAD = (15 * Math.PI) / 180; // +-15 deg smooth banking tilt (FR-010)
+  public static readonly BANK_INTERP_SPEED = 12;
+
   private readonly entities: EntityManager;
   private playerId: EntityId;
   private readonly canvasWidth: number;
@@ -39,10 +42,24 @@ export class MovementSystem implements GameSystem {
       const transform = this.entities.transforms.get(id);
       if (!transform) continue;
 
-      // 1. Player ship movement & strict viewport clamping (FR-001)
+      // 1. Player ship movement, smooth lateral banking tilt & strict viewport clamping (FR-001, FR-010)
       if (id === this.playerId) {
         transform.x += transform.vx * dt;
         transform.y += transform.vy * dt;
+
+        // Smoothly interpolate ship banking tilt up to +-15 degrees when steering horizontally
+        let targetTilt = 0;
+        if (transform.vx < -10) {
+          targetTilt = -MovementSystem.MAX_BANK_TILT_RAD;
+        } else if (transform.vx > 10) {
+          targetTilt = MovementSystem.MAX_BANK_TILT_RAD;
+        }
+        const blend = Math.min(1, MovementSystem.BANK_INTERP_SPEED * dt);
+        transform.rotation = Vector2.clamp(
+          transform.rotation + (targetTilt - transform.rotation) * blend,
+          -MovementSystem.MAX_BANK_TILT_RAD,
+          MovementSystem.MAX_BANK_TILT_RAD
+        );
 
         const render = this.entities.renders.get(id);
         const halfW = render ? render.width * 0.5 : 22;

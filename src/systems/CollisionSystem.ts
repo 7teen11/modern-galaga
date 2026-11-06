@@ -102,10 +102,23 @@ export class CollisionSystem implements GameSystem {
             ehb.halfHeight
           )
         ) {
-          // Deterministic single-target hit resolution
-          this.weaponSystem.releaseBulletByEntityId(bulletId);
-          this.healthSystem.applyDamage(enemyId, bProj.damage, bulletId);
-          break;
+          if (bProj.isPiercing) {
+            // Tier 5 Armor-Piercing Hyper Beam: penetrate through multiple enemies without despawning (FR-002, Q3: A)
+            const penetrated = bProj.penetratedEntityIds;
+            if (penetrated && penetrated.indexOf(enemyId) !== -1) {
+              continue;
+            }
+            if (penetrated) {
+              penetrated.push(enemyId);
+            }
+            this.healthSystem.applyDamage(enemyId, bProj.damage, bulletId);
+            continue;
+          } else {
+            // Standard non-piercing projectile: deterministic single-target hit resolution
+            this.weaponSystem.releaseBulletByEntityId(bulletId);
+            this.healthSystem.applyDamage(enemyId, bProj.damage, bulletId);
+            break;
+          }
         }
       }
     });

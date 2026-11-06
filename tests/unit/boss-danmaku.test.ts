@@ -5,6 +5,10 @@ import { HellDirector } from '../../src/modes/hell/HellDirector';
 import { HellBossPool } from '../../src/modes/hell/HellBossPool';
 import { HellBossSystem } from '../../src/modes/hell/HellBossSystem';
 import { EnemyPool } from '../../src/ecs/EnemyPool';
+import { createPlayerShip } from '../../src/components/PlayerComponents';
+import { InputSystem } from '../../src/systems/InputSystem';
+import { WeaponSystem } from '../../src/systems/WeaponSystem';
+import { HealthSystem } from '../../src/systems/HealthSystem';
 
 describe('HellBossSystem & Danmaku Mechanics (T014)', () => {
   let entities: EntityManager;
@@ -105,5 +109,62 @@ describe('HellBossSystem & Danmaku Mechanics (T014)', () => {
     bossSystem.update(2.6);
     expect(victoryTriggered).toBe(true);
     expect(bossSystem.getState()).toBe('DEFEATED');
+  });
+
+  it('damages and destroys the Boss when player bullets hit the Boss hitbox and triggers player death when Boss Danmaku depletes player HP', () => {
+    const playerId = createPlayerShip(entities);
+    const inputSystem = new InputSystem(entities, eventBus, playerId);
+    const weaponSystem = new WeaponSystem(entities, eventBus, inputSystem, playerId, 600, 800);
+    let gameOverCalled = false;
+    const healthSystem = new HealthSystem(
+      entities,
+      eventBus,
+      enemyPool,
+      weaponSystem,
+      playerId,
+      () => {
+        gameOverCalled = true;
+      }
+    );
+
+    bossSystem.setPlayerId(playerId);
+    bossSystem.setCombatSystems(weaponSystem, healthSystem);
+    bossSystem.spawnBoss();
+    bossSystem.setBossPosition(300, 148);
+    bossSystem.forcePhase1();
+
+    // 1. Spawn a player bullet directly inside the Boss hitbox (300, 148) with 1,200 damage
+    weaponSystem.spawnPlayerBullet(300, 148, 0, -800, 1200);
+    bossSystem.update(1 / 60);
+
+    expect(bossSystem.getCurrentHealth()).toBe(0);
+    expect(bossSystem.getState()).toBe('DYING');
+
+    // 2. Respawn Boss to test Boss Danmaku killing the player across all 3 lives
+    bossSystem.spawnBoss();
+    bossSystem.setBossPosition(300, 148);
+    bossSystem.forcePhase1();
+
+    const pt = entities.transforms.get(playerId)!;
+    const ph = entities.healths.get(playerId)!;
+    pt.x = 300;
+    pt.y = 700;
+    ph.livesRemaining = 1;
+    ph.currentHealth = 40; // 1 Danmaku bullet (40 damage) will reduce HP to 0 and trigger Game Over
+    ph.invulnerableTimer = 0;
+
+    const bullet = bossPool.acquire();
+    const bt = entities.transforms.get(bullet.entityId)!;
+    bt.x = 300;
+    bt.y = 700;
+    bt.vx = 0;
+    bt.vy = 0;
+
+    bossSystem.update(1 / 60);
+
+    expect(ph.currentHealth).toBe(0);
+    expect(ph.livesRemaining).toBe(0);
+    expect(gameOverCalled).toBe(true);
+    expect(entities.isEntityActive(playerId)).toBe(false);
   });
 });

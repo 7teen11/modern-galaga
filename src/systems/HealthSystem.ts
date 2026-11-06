@@ -54,6 +54,14 @@ export class HealthSystem implements GameSystem {
         h.invulnerableTimer = Math.max(0, h.invulnerableTimer - dt);
       }
     }
+
+    // Safety guard: if player HP was reduced to 0 by an external hazard interceptor, resolve life loss immediately
+    if (this.entities.isEntityActive(this.playerId)) {
+      const playerHealth = this.entities.healths.get(this.playerId);
+      if (playerHealth && playerHealth.currentHealth <= 0) {
+        this.resolvePlayerHit(0);
+      }
+    }
   }
 
   /**
@@ -88,12 +96,16 @@ export class HealthSystem implements GameSystem {
     });
 
     if (transform) {
+      const sparkColor =
+        targetId === this.playerId
+          ? '#00f0ff'
+          : render?.hullPrimary ?? '#ffcc00';
       this.eventBus.emit('VFX_SPAWN_TRIGGERED', {
         type: 'HIT_SPARK',
         x: transform.x,
         y: transform.y,
         particleCount: 6,
-        color: targetId === this.playerId ? '#00f0ff' : '#ffcc00'
+        color: sparkColor
       });
     }
 
@@ -131,8 +143,12 @@ export class HealthSystem implements GameSystem {
       });
     }
 
-    // Reset weapon tier to base Tier 1 on life loss (FR-011)
-    this.weaponSystem.resetPlayerWeaponTier();
+    // Degrade weapon tier by 1 level on life loss: max(1, currentTier - 1) (FR-005, Q1: A)
+    if (nextLives > 0) {
+      this.weaponSystem.degradePlayerWeaponTier();
+    } else {
+      this.weaponSystem.resetPlayerWeaponTier();
+    }
 
     if (nextLives > 0) {
       // Respawn at safe bottom-center coordinate with full health & 2.5s invulnerability (FR-012)
@@ -187,13 +203,15 @@ export class HealthSystem implements GameSystem {
     }
 
     const pointsAwarded = behavior ? behavior.pointValue : stats.pointValue;
+    const render = this.entities.renders.get(enemyId);
+    const explosionColor = render?.hullPrimary ?? stats.bloomColor;
 
     this.eventBus.emit('VFX_SPAWN_TRIGGERED', {
       type: 'EXPLOSION',
       x,
       y,
       particleCount: archetype === 'COMMANDER' ? 26 : 14,
-      color: stats.bloomColor
+      color: explosionColor
     });
 
     this.eventBus.emit('ENEMY_DESTROYED', {

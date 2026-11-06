@@ -41,6 +41,10 @@ export interface RenderComponent {
   scale: number;
   hitFlashTimer: number;
   bloomColor?: string;
+  variantId?: string;
+  hullPrimary?: string;
+  hullSecondary?: string;
+  thrusterColor?: string;
 }
 
 export interface HitboxComponent {
@@ -60,7 +64,7 @@ export interface HealthComponent {
   livesRemaining?: number;
 }
 
-export type WeaponTier = 1 | 2 | 3;
+export type WeaponTier = 1 | 2 | 3 | 4 | 5;
 
 export interface WeaponComponent {
   tier: WeaponTier;
@@ -97,6 +101,10 @@ export interface EnemyBehaviorComponent {
 export interface ProjectileComponent {
   sourceAffiliation: 'PLAYER' | 'ENEMY';
   damage: number;
+  tier?: WeaponTier;
+  color?: string;
+  isPiercing?: boolean;
+  penetratedEntityIds?: number[];
 }
 
 export interface PowerUpComponent {

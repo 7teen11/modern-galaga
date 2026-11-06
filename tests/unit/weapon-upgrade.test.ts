@@ -121,25 +121,25 @@ describe('User Story 4: In-Run Weapon Upgrades & Power-Up Drops', () => {
     expect(weaponSystem.getPoolMetrics().playerBullets.activeCount).toBe(3);
   });
 
-  it('awards 1,000 bonus points when collecting surplus weapon tokens at maximum Tier 3 (User Story 4 Scenario 3)', () => {
+  it('awards +2,000 Overcharge bonus points when collecting surplus weapon tokens at maximum Tier 5 (User Story 1 / FR-004)', () => {
     const playerTransform = entities.transforms.get(playerId)!;
     const playerWeapon = entities.weapons.get(playerId)!;
     playerTransform.x = 300;
     playerTransform.y = 700;
-    playerWeapon.tier = 3;
+    playerWeapon.tier = 5;
 
     powerUpPool.spawn('WEAPON_UPGRADE', 300, 700);
     collisionSystem.update(1 / 60);
 
-    expect(playerWeapon.tier).toBe(3);
+    expect(playerWeapon.tier).toBe(5);
     expect(bonusPointsAwarded).toBe(SURPLUS_UPGRADE_BONUS_POINTS);
   });
 
-  it('resets weapon tier back to Tier 1 when losing a life and respawning (FR-011)', () => {
+  it('degrades weapon tier by 1 level (max(1, tier - 1)) when losing a life and respawning (FR-005)', () => {
     const playerWeapon = entities.weapons.get(playerId)!;
-    playerWeapon.tier = 3;
+    playerWeapon.tier = 2;
 
-    // Lose 1 life (100 damage)
+    // Lose 1 life (100 damage) -> Tier 2 degrades to Tier 1
     healthSystem.applyDamage(playerId, 100);
     expect(playerWeapon.tier).toBe(1);
   });

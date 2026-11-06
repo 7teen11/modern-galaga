@@ -9,7 +9,7 @@ import { PowerUpType } from '../core/EventBus';
 
 export const POWERUP_DRIFT_SPEED = 110; // pixels/sec downward drift
 export const POWERUP_DESPAWN_SEC = 9.0;
-export const SURPLUS_UPGRADE_BONUS_POINTS = 1000; // Bonus when already at Tier 3 (User Story 4)
+export const SURPLUS_UPGRADE_BONUS_POINTS = 2000; // Overcharge bonus when already at Max Tier 5 (FR-004)
 
 export class PooledPowerUp implements Poolable {
   public active = false;

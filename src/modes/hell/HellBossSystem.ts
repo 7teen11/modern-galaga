@@ -4,12 +4,16 @@ import { EventBus } from '../../core/EventBus';
 import { HellDirector } from './HellDirector';
 import { HellBossPool } from './HellBossPool';
 import { EnemyPool } from '../../ecs/EnemyPool';
+import { WeaponSystem } from '../../systems/WeaponSystem';
+import { HealthSystem } from '../../systems/HealthSystem';
+import { CollisionSystem } from '../../systems/CollisionSystem';
 import { BossHealthBar } from './ui/BossHealthBar';
 import { HellBossRenderer, BossRenderState } from './ui/HellBossRenderer';
 import { HELL_RULES } from './HellConfig';
 import { Vector2 } from '../../utils/Vector2';
 
 export type BossState = 'HIDDEN' | 'INTRO' | 'PHASE_1' | 'PHASE_2' | 'DYING' | 'DEFEATED';
+const BOSS_VIRTUAL_ENTITY_ID = -999;
 
 /**
  * HellBossSystem - Climax Boss FSM, Danmaku Barrages, Enrage & Escort Summons (US3).
@@ -21,6 +25,8 @@ export class HellBossSystem implements GameSystem {
   private bossPool: HellBossPool;
   private enemyPool: EnemyPool;
   private playerId: number;
+  private weaponSystem?: WeaponSystem;
+  private healthSystem?: HealthSystem;
 
   // Boss state
   private state: BossState = 'HIDDEN';
@@ -51,7 +57,9 @@ export class HellBossSystem implements GameSystem {
     director: HellDirector,
     bossPool: HellBossPool,
     enemyPool: EnemyPool,
-    playerId: number
+    playerId: number,
+    weaponSystem?: WeaponSystem,
+    healthSystem?: HealthSystem
   ) {
     this.entities = entities;
     this.eventBus = eventBus;
@@ -59,6 +67,8 @@ export class HellBossSystem implements GameSystem {
     this.bossPool = bossPool;
     this.enemyPool = enemyPool;
     this.playerId = playerId;
+    this.weaponSystem = weaponSystem;
+    this.healthSystem = healthSystem;
 
     this.healthBar = new BossHealthBar();
     this.renderer = new HellBossRenderer();
@@ -80,6 +90,28 @@ export class HellBossSystem implements GameSystem {
 
   public setPlayerId(id: number): void {
     this.playerId = id;
+  }
+
+  public setCombatSystems(weaponSystem: WeaponSystem, healthSystem: HealthSystem): void {
+    this.weaponSystem = weaponSystem;
+    this.healthSystem = healthSystem;
+  }
+
+  public reset(): void {
+    this.state = 'HIDDEN';
+    this.currentHealth = this.maxHealth;
+    this.x = Game.LOGICAL_WIDTH / 2;
+    this.y = -100;
+    this.hitFlashTimer = 0;
+    this.introTimer = 2.5;
+    this.dyingTimer = 2.5;
+    this.danmakuTimer = 0;
+    this.spiralAngle = 0;
+    this.swayTimer = 0;
+    this.escortsSpawned = 0;
+    this.escortIds.clear();
+    this.bossPool.releaseAll();
+    this.healthBar.setVisible(false);
   }
 
   public isBossActive(): boolean {
@@ -133,7 +165,13 @@ export class HellBossSystem implements GameSystem {
   }
 
   public applyBossDamage(amount: number): void {
-    if (!this.isBossActive() || this.state === 'INTRO' || this.state === 'DYING') return;
+    if (!this.isBossActive() || this.state === 'DYING') return;
+
+    if (this.state === 'INTRO') {
+      // Allow immediate combat engagement if player fires at boss during intro descent
+      this.state = 'PHASE_1';
+      this.introTimer = 0;
+    }
 
     this.currentHealth = Math.max(0, this.currentHealth - amount);
     this.hitFlashTimer = 0.08;
@@ -153,6 +191,13 @@ export class HellBossSystem implements GameSystem {
       this.state = 'DYING';
       this.dyingTimer = 2.5;
       this.bossPool.releaseAll();
+      this.eventBus.emit('VFX_SPAWN_TRIGGERED', {
+        type: 'EXPLOSION',
+        x: this.x,
+        y: this.y,
+        particleCount: 40,
+        color: '#ff0055',
+      });
     }
   }
 
@@ -259,9 +304,17 @@ export class HellBossSystem implements GameSystem {
     if (this.state === 'INTRO') {
       this.introTimer -= dt;
       this.y += 92 * dt;
+      if (this.y >= 20) {
+        const playerT = this.entities.transforms.get(this.playerId);
+        const px = playerT ? playerT.x : Game.LOGICAL_WIDTH / 2;
+        const py = playerT ? playerT.y : Game.LOGICAL_HEIGHT * 0.85;
+        this.checkPlayerBulletsAndRammingVsBoss(px, py);
+      }
       if (this.y >= 148 || this.introTimer <= 0) {
         this.y = 148;
-        this.state = 'PHASE_1';
+        if (this.state === 'INTRO') {
+          this.state = 'PHASE_1';
+        }
       }
       return;
     }
@@ -290,6 +343,12 @@ export class HellBossSystem implements GameSystem {
     const px = playerT ? playerT.x : Game.LOGICAL_WIDTH / 2;
     const py = playerT ? playerT.y : Game.LOGICAL_HEIGHT * 0.85;
 
+    // 4b. Check Player Bullets & Player Ship Ramming vs Boss Hitbox
+    this.checkPlayerBulletsAndRammingVsBoss(px, py);
+    if (this.currentHealth <= 0) {
+      return;
+    }
+
     if (this.state === 'PHASE_1') {
       if (this.danmakuTimer >= 1.4) {
         this.danmakuTimer = 0;
@@ -311,9 +370,93 @@ export class HellBossSystem implements GameSystem {
     this.updateDanmakuBullets(dt, px, py);
   }
 
+  private checkPlayerBulletsAndRammingVsBoss(playerX: number, playerY: number): void {
+    if (!this.isBossActive() || this.state === 'DYING') return;
+
+    const bossHalfW = this.width * 0.5;
+    const bossHalfH = this.height * 0.5;
+
+    // 1. Player Bullets vs Boss AABB
+    if (this.weaponSystem) {
+      this.weaponSystem.playerBulletPool.forEachActive((pooledBullet) => {
+        if (this.state === 'DYING' || this.state === 'DEFEATED') return;
+
+        const bulletId = pooledBullet.entityId;
+        if (!this.entities.isEntityActive(bulletId)) return;
+
+        const bt = this.entities.transforms.get(bulletId);
+        const bhb = this.entities.hitboxes.get(bulletId);
+        const bProj = this.entities.projectiles.get(bulletId);
+        if (!bt || !bhb || !bProj) return;
+
+        if (
+          CollisionSystem.circleIntersectsAABB(
+            bt.x,
+            bt.y,
+            bhb.radius,
+            this.x,
+            this.y,
+            bossHalfW,
+            bossHalfH
+          )
+        ) {
+          if (bProj.isPiercing) {
+            const penetrated = bProj.penetratedEntityIds;
+            if (penetrated && penetrated.indexOf(BOSS_VIRTUAL_ENTITY_ID) !== -1) {
+              return;
+            }
+            if (penetrated) {
+              penetrated.push(BOSS_VIRTUAL_ENTITY_ID);
+            }
+          } else {
+            this.weaponSystem!.releaseBulletByEntityId(bulletId);
+          }
+
+          this.applyBossDamage(bProj.damage);
+
+          this.eventBus.emit('ENTITY_DAMAGED', {
+            targetId: BOSS_VIRTUAL_ENTITY_ID,
+            damageAmount: bProj.damage,
+            remainingHealth: this.currentHealth,
+            sourceId: bulletId,
+          });
+
+          this.eventBus.emit('VFX_SPAWN_TRIGGERED', {
+            type: 'HIT_SPARK',
+            x: bt.x,
+            y: bt.y,
+            particleCount: 6,
+            color: '#ff2a70',
+          });
+        }
+      });
+    }
+
+    // 2. Player Ship Ramming vs Boss AABB
+    if (this.healthSystem && this.entities.isEntityActive(this.playerId)) {
+      const phb = this.entities.hitboxes.get(this.playerId);
+      const coreRadius = phb ? phb.radius : 10;
+      if (
+        CollisionSystem.circleIntersectsAABB(
+          playerX,
+          playerY,
+          coreRadius,
+          this.x,
+          this.y,
+          bossHalfW,
+          bossHalfH
+        )
+      ) {
+        this.healthSystem.applyDamage(
+          this.playerId,
+          HELL_RULES.DAMAGE.collisionDamage,
+          BOSS_VIRTUAL_ENTITY_ID
+        );
+      }
+    }
+  }
+
   private updateDanmakuBullets(dt: number, playerX: number, playerY: number): void {
-    const playerActive = this.entities.isEntityActive(this.playerId);
-    const playerHealth = this.entities.healths.get(this.playerId);
     const playerHitbox = this.entities.hitboxes.get(this.playerId);
     const lethalRadius = (playerHitbox ? playerHitbox.radius : 10) + HELL_RULES.BOSS.bulletRadius;
     const lethalDistSq = lethalRadius * lethalRadius;
@@ -337,21 +480,31 @@ export class HellBossSystem implements GameSystem {
       }
 
       // Check collision with Player Cockpit Core (45%)
+      const playerActive = this.entities.isEntityActive(this.playerId);
+      const playerHealth = this.entities.healths.get(this.playerId);
       if (playerActive && playerHealth && playerHealth.invulnerableTimer <= 0) {
         const distSq = Vector2.distanceSq(t.x, t.y, playerX, playerY);
         if (distSq <= lethalDistSq) {
           this.bossPool.release(bullet);
-          // 40 HP Hell bullet damage
-          this.eventBus.emit('ENTITY_DAMAGED', {
-            targetId: this.playerId,
-            damageAmount: HELL_RULES.DAMAGE.bulletDamage,
-            remainingHealth: Math.max(0, playerHealth.currentHealth - HELL_RULES.DAMAGE.bulletDamage),
-            sourceId: bullet.entityId,
-          });
-          playerHealth.currentHealth = Math.max(
-            0,
-            playerHealth.currentHealth - HELL_RULES.DAMAGE.bulletDamage
-          );
+          if (this.healthSystem) {
+            // Delegate to HealthSystem so life-loss, respawn, and Game Over execute properly
+            this.healthSystem.applyDamage(
+              this.playerId,
+              HELL_RULES.DAMAGE.bulletDamage,
+              bullet.entityId
+            );
+          } else {
+            this.eventBus.emit('ENTITY_DAMAGED', {
+              targetId: this.playerId,
+              damageAmount: HELL_RULES.DAMAGE.bulletDamage,
+              remainingHealth: Math.max(0, playerHealth.currentHealth - HELL_RULES.DAMAGE.bulletDamage),
+              sourceId: bullet.entityId,
+            });
+            playerHealth.currentHealth = Math.max(
+              0,
+              playerHealth.currentHealth - HELL_RULES.DAMAGE.bulletDamage
+            );
+          }
         }
       }
     });

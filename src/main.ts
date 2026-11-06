@@ -15,6 +15,7 @@ import { HealthSystem } from './systems/HealthSystem';
 import { CollisionSystem } from './systems/CollisionSystem';
 import { PowerUpPool } from './components/PowerUp';
 import { DropSystem } from './systems/DropSystem';
+import { ParallaxSystem } from './systems/ParallaxSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { VFXSystem } from './systems/VFXSystem';
 import { HUD } from './ui/HUD';
@@ -142,6 +143,9 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
   hellBossSystem.onBossDefeated = () => {
     scoreManager.addPoints(10000); // 10,000 pts boss clear bonus
     hellDirector.stopRun();
+    weaponSystem.releaseAllBullets();
+    enemyPool.releaseAll();
+    hellBossPool.releaseAll();
     const finalScore = scoreManager.getState().currentScore;
     const clearTimeMs = hellDirector.getClearTimeMs();
     const clearTimeFormatted = hellDirector.getFormattedClearTime();
@@ -176,14 +180,29 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
   hellDirector.registerSubSystem(hellBossSystem);
   hellDirector.registerSubSystem(hellHUDTheme);
 
-  // 5. Visual Renderer, VFX Particle Pool & Overlays
-  const renderSystem = new RenderSystem(entities, playerId);
+  // 5. Visual Renderer, 3-Layer Parallax Starfield, VFX Particle Pool & Overlays
+  const parallaxSystem = new ParallaxSystem(Game.LOGICAL_WIDTH, Game.LOGICAL_HEIGHT);
+  const renderSystem = new RenderSystem(
+    entities,
+    playerId,
+    Game.LOGICAL_WIDTH,
+    Game.LOGICAL_HEIGHT,
+    parallaxSystem
+  );
   const vfxSystem = new VFXSystem(eventBus, renderSystem, playerId);
   vfxSystem.setAccessibilityPreferences(
     initialSettings.screenShakeIntensity,
     initialSettings.reducedFlash,
     initialSettings.qualityPreset
   );
+
+  // Tactile recoil & micro screen-shake on Tier 4 / Tier 5 firing (FR-003, T025)
+  weaponSystem.onHighTierFireRecoil = (recoilPx, shakeMag, shakeDurSec) => {
+    renderSystem.triggerPlayerRecoil(recoilPx);
+    if (shakeMag > 0 && shakeDurSec > 0) {
+      vfxSystem.triggerMicroShake(shakeMag, shakeDurSec);
+    }
+  };
 
   let activeSessionToken = '';
   let runStartTimeMs = Date.now();
@@ -268,6 +287,9 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
     playerId
   );
 
+  // Wire WeaponSystem and HealthSystem into HellBossSystem so player bullets damage Boss and Boss Danmaku resolves life loss
+  hellBossSystem.setCombatSystems(weaponSystem, healthSystem);
+
   const powerUpPool = new PowerUpPool(entities);
   const dropSystem = new DropSystem(
     entities,
@@ -313,10 +335,19 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
     }
   });
 
+  // Trigger "+2,000 OVERCHARGE" HUD banner & 80px radial energy wave ring on max-tier pickup (US1/AC3)
+  eventBus.on('WEAPON_UPGRADED', (payload) => {
+    if (payload.isMaxTierBonus) {
+      const pt = entities.transforms.get(playerId);
+      renderSystem.triggerOverchargePulse(pt ? pt.x : 300, pt ? pt.y : 700);
+      hud.triggerOverchargeBanner();
+    }
+  });
+
   // 6. Register Systems in Deterministic Execution Order
   game.addSystem({
     update(dt: number) {
-      if (game.getState() === GameModeState.PLAYING) {
+      if (game.getState() === GameModeState.PLAYING && !hellVictoryScreen.isOpen()) {
         inputSystem.update(dt);
         movementSystem.update(dt);
         weaponSystem.update(dt);
@@ -363,8 +394,10 @@ export function bootstrapGame(canvasElement?: HTMLCanvasElement): Game {
 
     // Reset pools & entities
     weaponSystem.releaseAllBullets();
+    enemyPool.releaseAll();
     powerUpPool.releaseAll();
     hellBossPool.releaseAll();
+    hellBossSystem.reset();
     waveSpawnSystem.reset();
     hellWaveSystem.reset();
     vfxSystem.particlePool.releaseAll();

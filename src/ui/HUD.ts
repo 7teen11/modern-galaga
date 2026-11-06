@@ -1,7 +1,8 @@
 import { EntityManager } from '../ecs/Entity';
-import { EntityId } from '../ecs/Component';
+import { EntityId, WeaponTier } from '../ecs/Component';
 import { Game, GameModeState, GameSystem } from '../core/Game';
 import { isHealthCritical } from '../components/Health';
+import { WEAPON_TIER_SPECS } from '../components/WeaponTierConfig';
 import { PoolMetrics } from '../ecs/Pool';
 
 export interface HUDDebugStats {
@@ -38,6 +39,9 @@ export class HUD implements GameSystem {
   private readonly width: number;
   private readonly height: number;
   private pulseClock = 0;
+  private lastKnownTier: WeaponTier = 1;
+  private tierUpgradeFlashTimer = 0;
+  private overchargeBannerTimer = 0;
 
   constructor(
     entities: EntityManager,
@@ -57,8 +61,30 @@ export class HUD implements GameSystem {
     this.playerId = id;
   }
 
+  public triggerOverchargeBanner(): void {
+    this.overchargeBannerTimer = 1.1;
+    this.tierUpgradeFlashTimer = 0.65;
+  }
+
+  public isOverchargeBannerActive(): boolean {
+    return this.overchargeBannerTimer > 0;
+  }
+
   public update(dt: number): void {
     this.pulseClock += dt;
+    if (this.tierUpgradeFlashTimer > 0) {
+      this.tierUpgradeFlashTimer = Math.max(0, this.tierUpgradeFlashTimer - dt);
+    }
+    if (this.overchargeBannerTimer > 0) {
+      this.overchargeBannerTimer = Math.max(0, this.overchargeBannerTimer - dt);
+    }
+    const weapon = this.entities.weapons.get(this.playerId);
+    if (weapon && weapon.tier !== this.lastKnownTier) {
+      if (weapon.tier > this.lastKnownTier) {
+        this.tierUpgradeFlashTimer = 0.65;
+      }
+      this.lastKnownTier = weapon.tier;
+    }
   }
 
   public render(ctx: CanvasRenderingContext2D): void {
@@ -147,9 +173,33 @@ export class HUD implements GameSystem {
       ctx.fill();
     }
 
-    const tier = weapon ? weapon.tier : 1;
-    ctx.fillStyle = tier === 3 ? '#ffcc00' : tier === 2 ? '#00ff88' : '#00f0ff';
-    ctx.fillText(`WPN: T${tier}`, barX + 114, 36);
+    const tier: WeaponTier = weapon ? weapon.tier : 1;
+    const tierSpec = WEAPON_TIER_SPECS[tier] ?? WEAPON_TIER_SPECS[1];
+    const isFlashingUpgrade = this.tierUpgradeFlashTimer > 0;
+    const badgeColor = isFlashingUpgrade ? '#ffffff' : tierSpec.primaryColor;
+
+    ctx.fillStyle = badgeColor;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(
+      this.overchargeBannerTimer > 0
+        ? '+2,000 OVERCHARGE'
+        : tier === 5
+          ? 'WPN: T5 MAX'
+          : `WPN: T${tier}`,
+      barX + 108,
+      36
+    );
+
+    // 5-tier visual power pips next to badge (FR-003)
+    for (let t = 1; t <= 5; t++) {
+      const pipX = barX + 182 + (t - 1) * 6;
+      const pipY = 29;
+      ctx.fillStyle =
+        t <= tier
+          ? badgeColor
+          : 'rgba(124, 141, 181, 0.25)';
+      ctx.fillRect(pipX, pipY, 4, 8);
+    }
   }
 
   private renderScoreAndWave(ctx: CanvasRenderingContext2D): void {

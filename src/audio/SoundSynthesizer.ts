@@ -1,4 +1,6 @@
 import { EventBus } from '../core/EventBus';
+import { WeaponTier } from '../ecs/Component';
+import { WEAPON_TIER_SPECS } from '../components/WeaponTierConfig';
 
 /**
  * Web Audio API Procedural Arcade Sound Synthesizer (Constitution Principle V - Original Assets).
@@ -63,25 +65,44 @@ export class SoundSynthesizer {
     return this.ctx;
   }
 
-  public playLaser(tier = 1): void {
+  public playLaser(tier: WeaponTier = 1): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
 
+    const spec = WEAPON_TIER_SPECS[tier] ?? WEAPON_TIER_SPECS[1];
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    osc.type = tier === 3 ? 'sawtooth' : 'square';
-    osc.frequency.setValueAtTime(tier === 3 ? 980 : 860, now);
-    osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
+    osc.type = tier >= 4 ? 'sawtooth' : tier === 3 ? 'triangle' : 'square';
+    osc.frequency.setValueAtTime(spec.audioFreqHz, now);
+    osc.frequency.exponentialRampToValueAtTime(160 + tier * 20, now + 0.085);
 
-    gain.gain.setValueAtTime(0.12 * this.masterVolume, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    const baseGain = (0.11 + tier * 0.015) * this.masterVolume;
+    gain.gain.setValueAtTime(baseGain, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.085);
+    osc.stop(now + 0.09);
+
+    // High-tier harmonic sub-bass punch for Tier 4 & Tier 5 (FR-003)
+    if (tier >= 4) {
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = 'sawtooth';
+      subOsc.frequency.setValueAtTime(spec.audioFreqHz * 0.5, now);
+      subOsc.frequency.exponentialRampToValueAtTime(95, now + 0.095);
+
+      subGain.gain.setValueAtTime(0.09 * this.masterVolume, now);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+
+      subOsc.connect(subGain);
+      subGain.connect(ctx.destination);
+      subOsc.start(now);
+      subOsc.stop(now + 0.1);
+    }
   }
 
   public playHitConfirm(): void {

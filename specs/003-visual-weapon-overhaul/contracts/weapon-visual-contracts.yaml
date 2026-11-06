@@ -1,0 +1,146 @@
+openapi: 3.0.3
+info:
+  title: Modern Galaga - Visual Overhaul & 5-Tier Weapon Contract
+  version: 1.2.0
+  description: Data contract and configuration specification for 5-tier weapons, enemy color palettes, and parallax visual assets.
+
+components:
+  schemas:
+    WeaponTierNumber:
+      type: integer
+      enum: [1, 2, 3, 4, 5]
+      example: 5
+
+    WeaponStreamDefinition:
+      type: object
+      required:
+        - offsetX
+        - offsetY
+        - angle
+      properties:
+        offsetX:
+          type: number
+          description: Horizontal offset relative to ship center
+          example: -12
+        offsetY:
+          type: number
+          description: Vertical offset relative to ship nose
+          example: 0
+        angle:
+          type: number
+          description: Spread angle in radians (0 is straight up)
+          example: -0.15
+        isPiercing:
+          type: boolean
+          default: false
+          description: True if projectile penetrates through multiple enemy hulls
+        damage:
+          type: number
+          description: Stream-specific damage override
+          example: 30
+
+    WeaponTierDefinition:
+      type: object
+      required:
+        - tier
+        - name
+        - bulletSpeed
+        - cooldown
+        - baseDamage
+        - color
+        - glowColor
+        - bulletWidth
+        - bulletHeight
+        - streams
+      properties:
+        tier:
+          $ref: '#/components/schemas/WeaponTierNumber'
+        name:
+          type: string
+          example: "Omega Vanguard Hyper Beam"
+        bulletSpeed:
+          type: number
+          example: 850
+        cooldown:
+          type: number
+          example: 0.10
+        baseDamage:
+          type: number
+          example: 30
+        color:
+          type: string
+          example: "#ff2a55"
+        glowColor:
+          type: string
+          example: "#ff003c"
+        bulletWidth:
+          type: number
+          example: 14
+        bulletHeight:
+          type: number
+          example: 32
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaponStreamDefinition'
+        screenShakeIntensity:
+          type: number
+          example: 2.5
+        muzzleSoundFrequency:
+          type: number
+          example: 440
+
+    EnemyVariantDefinition:
+      type: object
+      required:
+        - variantId
+        - name
+        - hullColor
+        - wingColor
+        - cockpitColor
+        - thrusterFlameColor
+      properties:
+        variantId:
+          type: string
+          example: "SCOUT_EMERALD"
+        name:
+          type: string
+          example: "Emerald Interceptor"
+        hullColor:
+          type: string
+          example: "#00f0ff"
+        wingColor:
+          type: string
+          example: "#00ff88"
+        cockpitColor:
+          type: string
+          example: "#ffffff"
+        thrusterFlameColor:
+          type: string
+          example: "#00ffcc"
+        sparkColor:
+          type: string
+          example: "#00ff88"
+
+    ParallaxLayerConfig:
+      type: object
+      required:
+        - layerName
+        - speed
+        - density
+        - particleType
+      properties:
+        layerName:
+          type: string
+          example: "DistantStars"
+        speed:
+          type: number
+          example: 25.0
+        density:
+          type: integer
+          example: 80
+        particleType:
+          type: string
+          enum: [PINPOINT, NEBULA, STREAK]
+          example: "PINPOINT"
+

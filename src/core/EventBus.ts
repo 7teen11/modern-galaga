@@ -32,7 +32,7 @@ export interface GameEventMap {
     isGameOver: boolean;
   };
   WEAPON_UPGRADED: {
-    newTier: 1 | 2 | 3;
+    newTier: 1 | 2 | 3 | 4 | 5;
     isMaxTierBonus: boolean;
   };
   WAVE_COMPLETED: {

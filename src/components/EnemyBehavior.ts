@@ -38,7 +38,7 @@ export const ENEMY_ARCHETYPE_CONFIG: Record<EnemyArchetype, EnemyArchetypeStats>
     baseDiveSpeed: 245,
     baseFireInterval: 2.2,
     baseDiveInterval: 5.0,
-    dropWeaponUpgradeChance: 0.15,
+    dropWeaponUpgradeChance: 0.20, // 20% weapon upgrade drop rate (FR-008, Q2: A)
     bloomColor: '#ff1e8a'
   },
   COMMANDER: {
